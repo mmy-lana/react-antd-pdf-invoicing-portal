@@ -7,6 +7,7 @@ import type {
   ItemTotalsMinor,
 } from '@/types';
 import { CURRENCY_DECIMALS } from '@/types';
+import { isStrictIsoDay, isoDayToEpochDay } from '@/utils/validators';
 
 /**
  * Calendar day in the operator's own timezone. Due-date comparisons are plain
@@ -48,6 +49,11 @@ export const addCalendarDays = (isoDate: string, days: number): string => {
  * Tax is levied on the discounted line value, never the gross line value, and
  * every intermediate figure is rounded to whole minor units so a printed
  * document reconciles exactly against the stored ledger totals.
+ *
+ * Both percentage inputs are clamped to 0-100. An unclamped rate lets a single
+ * bad keystroke multiply a line value by an unbounded factor and push the
+ * persisted total past the safe integer range, which is unrecoverable once it
+ * has been written.
  */
 export const calculateItemTotalsMinor = (
   quantity: number,
@@ -57,7 +63,7 @@ export const calculateItemTotalsMinor = (
 ): ItemTotalsMinor => {
   const billableQuantity = Math.max(0, quantity);
   const billableUnitPriceMinor = Math.max(0, Math.round(unitPriceMinor));
-  const appliedTaxRate = Math.max(0, taxRatePercent);
+  const appliedTaxRate = Math.min(100, Math.max(0, taxRatePercent));
   const appliedDiscountRate = Math.min(100, Math.max(0, discountRatePercent));
 
   const subtotalMinor = Math.round(billableQuantity * billableUnitPriceMinor);
@@ -121,8 +127,19 @@ export const determineInvoiceStatus = (
   if (currentStatus === 'draft') return 'draft';
   if (totalAmountMinor === 0 || amountPaidMinor >= totalAmountMinor) return 'paid';
 
-  const todayISO = todayLocalISO();
-  const isPastDue = dueDateISO.slice(0, 10) < todayISO;
+  /*
+   * Compared as epoch days rather than by slicing characters off the string. A
+   * stored date that is not a strict calendar day would otherwise be ordered by
+   * its first ten characters and silently mis-age, so an unparseable due date is
+   * treated as still within terms rather than guessed at.
+   */
+  const dueEpochDay = isoDayToEpochDay(dueDateISO);
+  if (dueEpochDay === null) {
+    return amountPaidMinor > 0 ? 'partial' : 'pending';
+  }
+
+  const todayEpochDay = isoDayToEpochDay(todayLocalISO());
+  const isPastDue = todayEpochDay !== null && dueEpochDay < todayEpochDay;
 
   if (isPastDue) return 'overdue';
   if (amountPaidMinor > 0) return 'partial';
@@ -131,12 +148,14 @@ export const determineInvoiceStatus = (
 
 /** Whole days elapsed since the due date; negative while still within terms. */
 export const daysPastDue = (dueDateISO: string, referenceDateISO: string = todayLocalISO()): number => {
-  const [dueYear, dueMonth, dueDay] = dueDateISO.slice(0, 10).split('-').map(Number);
-  const [referenceYear, referenceMonth, referenceDay] = referenceDateISO.slice(0, 10).split('-').map(Number);
-  const dueAnchor = Date.UTC(dueYear ?? 1970, (dueMonth ?? 1) - 1, dueDay ?? 1);
-  const referenceAnchor = Date.UTC(referenceYear ?? 1970, (referenceMonth ?? 1) - 1, referenceDay ?? 1);
-  return Math.round((referenceAnchor - dueAnchor) / (24 * 60 * 60 * 1000));
+  const dueEpochDay = isoDayToEpochDay(dueDateISO);
+  const referenceEpochDay = isoDayToEpochDay(referenceDateISO);
+  if (dueEpochDay === null || referenceEpochDay === null) return 0;
+  return referenceEpochDay - dueEpochDay;
 };
+
+/** Exposed so callers can assert a stored date is well formed before ordering it. */
+export const isCalendarDay = isStrictIsoDay;
 
 export const percentOfMinorTotal = (partMinor: number, wholeMinor: number): number => {
   if (wholeMinor === 0) return 0;

@@ -33,6 +33,17 @@ export class InvoicingDatabase extends Dexie {
       invoices:
         'id, &invoiceNumber, clientId, status, issueDate, dueDate, totalAmountMinor, balanceDueMinor, portalToken, [clientId+status], [status+dueDate], createdAt, version',
     });
+
+    /*
+     * Email becomes a unique index (DATA-01). The service already refused a
+     * duplicate before writing; this closes the race where two operators submit
+     * the same address concurrently and both pass that check. The database is
+     * now the final authority: the second insert fails with a ConstraintError
+     * and its transaction rolls back.
+     */
+    this.version(3).stores({
+      clients: 'id, &email, name, companyName, createdAt, archivedAt',
+    });
   }
 }
 

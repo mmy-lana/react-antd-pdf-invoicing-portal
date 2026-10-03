@@ -457,6 +457,70 @@ const run = async () => {
 
     await writeFile(path.join(ARTIFACT_DIR, '360-mobile-s__invoice-editor-full.png'), await mobile.screenshot());
     await mobile.close();
+
+    // ---- In-app guide and Q&A drawer ----
+    const guide = await openTab(client);
+    attachDiagnostics(guide, 'guide-drawer');
+    await guide.setViewport({ width: 390, height: 844, mobile: true });
+
+    await guide.navigate(visitUrl('#/invoices'));
+    await waitForSelector(guide, 'input[aria-label="Search invoices"]');
+    await new Promise((settle) => setTimeout(settle, 800));
+
+    await guide.clickSelector('button[aria-label="Open the system guide and frequently asked questions"]');
+    await new Promise((settle) => setTimeout(settle, 900));
+
+    const guideAudit = await guide.evaluate(`(() => {
+      // Ant Design 6 renamed the drawer body to .ant-drawer-section; the older
+      // .ant-drawer-content is kept as a fallback for other major versions.
+      const drawer =
+        document.querySelector('.ant-drawer-section') || document.querySelector('.ant-drawer-content');
+      const root = document.querySelector('.ant-drawer');
+      const text = drawer ? drawer.innerText : '';
+      return {
+        drawerOpen: root !== null && String(root.className).includes('ant-drawer-open'),
+        hasTitle: text.includes('System Guide & Mini Q&A'),
+        hasOverview: text.includes('IndexedDB'),
+        navigationHeadings: ['Invoices', 'Clients', 'Settings', 'Client Portal'].filter((heading) =>
+          text.includes(heading),
+        ).length,
+        questions: [
+          'Where are invoice and client data stored?',
+          'How does automatic PDF generation work?',
+          'Can an issued invoice number be reused or deleted?',
+          'How do payment settlements affect status?',
+        ].filter((question) => text.includes(question)).length,
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      };
+    })()`);
+
+    if (!guideAudit.drawerOpen) {
+      record('error', '[guide] the guide drawer did not open from the header button');
+    } else {
+      if (!guideAudit.hasTitle) record('error', '[guide] the drawer is missing its "System Guide & Mini Q&A" title');
+      if (!guideAudit.hasOverview) record('error', '[guide] the overview section does not describe local storage');
+      if (guideAudit.navigationHeadings !== 4) {
+        record('error', `[guide] navigation guide rendered ${guideAudit.navigationHeadings} of 4 sections`);
+      }
+      if (guideAudit.questions !== 4) {
+        record('error', `[guide] mini Q&A rendered ${guideAudit.questions} of 4 questions`);
+      }
+      if (guideAudit.overflow > 1) {
+        record('error', `[guide] the open drawer overflows by ${guideAudit.overflow}px at 390px`);
+      }
+      if (
+        guideAudit.hasTitle &&
+        guideAudit.hasOverview &&
+        guideAudit.navigationHeadings === 4 &&
+        guideAudit.questions === 4 &&
+        guideAudit.overflow <= 1
+      ) {
+        record('pass', '[guide] drawer opened with overview, 4 navigation sections and 4 Q&A entries, no overflow');
+      }
+    }
+
+    await writeFile(path.join(ARTIFACT_DIR, '390-mobile-m__guide-drawer.png'), await guide.screenshot());
+    await guide.close();
   } finally {
     await shutdown();
   }

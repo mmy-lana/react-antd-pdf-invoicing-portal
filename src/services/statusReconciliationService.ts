@@ -39,6 +39,19 @@ export const reconcileInvoiceStatuses = async (): Promise<number> => {
 };
 
 /**
+ * A sweep failure is not fatal, but it must not be invisible either (DATA-03).
+ * Status is eventually consistent by design, so a missed sweep self-corrects on
+ * the next run; logging the cause is what makes a persistent failure
+ * diagnosable instead of a silent ledger drift.
+ */
+const reportReconciliationFailure = (trigger: string, failure: unknown): void => {
+  const cause = failure instanceof Error ? failure.message : String(failure);
+  console.warn(
+    `[invoicing] Status reconciliation triggered by "${trigger}" did not complete: ${cause}`
+  );
+};
+
+/**
  * Runs on an interval and whenever the tab regains focus, so a laptop left open
  * overnight catches up the moment it is looked at again. Returns its own
  * teardown for the caller's effect cleanup.
@@ -46,14 +59,18 @@ export const reconcileInvoiceStatuses = async (): Promise<number> => {
 export const startStatusReconciliationScheduler = (): (() => void) => {
   const reconcileOnFocus = (): void => {
     if (document.visibilityState === 'visible') {
-      void reconcileInvoiceStatuses().catch(() => undefined);
+      void reconcileInvoiceStatuses().catch((failure: unknown) =>
+        reportReconciliationFailure('tab-focus', failure)
+      );
     }
   };
 
   document.addEventListener('visibilitychange', reconcileOnFocus);
 
   const intervalHandle = window.setInterval(() => {
-    void reconcileInvoiceStatuses().catch(() => undefined);
+    void reconcileInvoiceStatuses().catch((failure: unknown) =>
+      reportReconciliationFailure('hourly-interval', failure)
+    );
   }, RECONCILE_INTERVAL_MS);
 
   return () => {

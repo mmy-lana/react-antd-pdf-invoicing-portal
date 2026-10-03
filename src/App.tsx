@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ConfigProvider, App as AntdApp, Spin, Result } from 'antd';
 import { RouterProvider } from 'react-router';
 import { router } from '@/router';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { initializeDatabase } from '@/db/seed';
 import { startStatusReconciliationScheduler } from '@/services/statusReconciliationService';
 import { useResponsiveBreakpoints } from '@/hooks/useResponsiveBreakpoints';
@@ -51,7 +52,15 @@ export const App: React.FC = () => {
   return (
     <ConfigProvider theme={getCorporateTheme(useTouchHeight)}>
       <AntdApp>
-        <RouterProvider router={router} />
+        {/*
+          ARCH-01: the boundary sits inside the Ant Design providers so its
+          recovery screen has the same theme and static message context as the
+          rest of the console, and outside the router so a throwing route cannot
+          take the shell down with it.
+        */}
+        <ErrorBoundary>
+          <RouterProvider router={router} />
+        </ErrorBoundary>
       </AntdApp>
     </ConfigProvider>
   );

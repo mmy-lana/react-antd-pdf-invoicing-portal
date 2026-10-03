@@ -5,7 +5,35 @@ import { writeAuditLog } from '@/services/auditService';
 
 export type OrganizationSettingsWrite = Omit<OrganizationSettings, 'id' | 'updatedAt'>;
 
-const escapeForLiteralMatch = (literal: string): string => literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const SEQUENCE_DIGITS_PATTERN = /^\d+$/;
+
+/**
+ * Highest sequence number already issued under a prefix.
+ *
+ * Uses the `invoiceNumber` index with a prefix range rather than reading the
+ * whole invoices table (CONC-01): the previous implementation materialised every
+ * invoice document, including its full line items and audit snapshots, only to
+ * look at one string on each. Reading primary keys from a bounded key range
+ * touches just the matching slice and never loads a document body.
+ */
+const highestSequenceUnderPrefix = async (prefix: string): Promise<number> => {
+  const matchingKeys = await db.invoices.where('invoiceNumber').startsWith(prefix).primaryKeys();
+
+  let highest = 0;
+  for (const key of matchingKeys) {
+    // Only "PREFIX-<digits>" counts; the prefix range can also catch a longer
+    // token that merely begins with the same characters.
+    const digits = String(key).slice(prefix.length + 1);
+    if (!SEQUENCE_DIGITS_PATTERN.test(digits)) continue;
+
+    const sequence = Number(digits);
+    if (Number.isFinite(sequence) && sequence > highest) {
+      highest = sequence;
+    }
+  }
+
+  return highest;
+};
 
 /**
  * Issuer settings guard.
@@ -34,13 +62,7 @@ export const updateSettingsTransactional = async (
     const currentSettings = await db.settings.get('org');
     if (!currentSettings) throw new Error('Settings not initialized.');
 
-    const prefixPattern = new RegExp(`^${escapeForLiteralMatch(proposedSettings.invoicePrefix)}-(\\d+)$`);
-    const issuedNumbers = (await db.invoices.toArray())
-      .map((invoice) => invoice.invoiceNumber.match(prefixPattern)?.[1])
-      .filter((digits): digits is string => Boolean(digits))
-      .map((digits) => Number(digits));
-
-    const highestIssued = issuedNumbers.length > 0 ? Math.max(...issuedNumbers) : 0;
+    const highestIssued = await highestSequenceUnderPrefix(proposedSettings.invoicePrefix);
     if (proposedSettings.nextInvoiceSequence <= highestIssued) {
       throw new Error(
         `Next invoice sequence must exceed the highest number already issued (${highestIssued}) for prefix "${proposedSettings.invoicePrefix}".`
@@ -77,12 +99,5 @@ export const updateSettingsTransactional = async (
 /** Highest number already issued under a prefix, for the settings screen hint. */
 export const highestIssuedSequenceForPrefix = async (prefix: string): Promise<number> => {
   if (!isAlphanumericSequenceToken(prefix)) return 0;
-
-  const prefixPattern = new RegExp(`^${escapeForLiteralMatch(prefix)}-(\\d+)$`);
-  const issuedNumbers = (await db.invoices.toArray())
-    .map((invoice) => invoice.invoiceNumber.match(prefixPattern)?.[1])
-    .filter((digits): digits is string => Boolean(digits))
-    .map((digits) => Number(digits));
-
-  return issuedNumbers.length > 0 ? Math.max(...issuedNumbers) : 0;
+  return await highestSequenceUnderPrefix(prefix);
 };

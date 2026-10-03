@@ -56,7 +56,14 @@ export default function InvoiceDetailRoute(): React.ReactElement {
   useEffect(() => {
     if (!invoiceId || hasLoggedThisVisit.current === invoiceId) return;
     hasLoggedThisVisit.current = invoiceId;
-    void logInvoiceEvent(invoiceId, 'view', ACTOR_LOCAL_ADMIN, 'Opened invoice detail').catch(() => undefined);
+    void logInvoiceEvent(invoiceId, 'view', ACTOR_LOCAL_ADMIN, 'Opened invoice detail').catch(
+      (auditFailure: unknown) => {
+        // DATA-03: a failed telemetry write must not block the screen, but it
+        // must be visible to whoever is diagnosing the audit trail.
+        const cause = auditFailure instanceof Error ? auditFailure.message : String(auditFailure);
+        console.warn(`[invoicing] Could not record the invoice view event for ${invoiceId}: ${cause}`);
+      }
+    );
   }, [invoiceId]);
 
   const paymentColumns = useMemo<TableColumnsType<PaymentRecord>>(
@@ -543,9 +550,14 @@ export default function InvoiceDetailRoute(): React.ReactElement {
                   key: 'portal',
                   label: 'Portal link',
                   children: (
+                    /*
+                     * UI-01: a link-styled button still needs the full tap
+                     * target. `minHeight: auto` here would have made this the
+                     * one interactive control on the screen under 44px.
+                     */
                     <Button
                       type="link"
-                      style={{ padding: 0, minHeight: 'auto' }}
+                      style={{ paddingInline: 0, minHeight: 'var(--touch-target-min, 44px)' }}
                       onClick={() => navigate(`/portal/${invoice.portalToken}`)}
                     >
                       View as the client

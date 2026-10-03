@@ -153,8 +153,12 @@ export const launchPrivateChrome = async (executablePath, extraArgs = []) => {
       client.close();
       chromeProcess.kill('SIGTERM');
       await new Promise((settle) => setTimeout(settle, 800));
-      // Chrome can still be flushing its profile; cleanup is best-effort.
-      await rm(profileDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => undefined);
+      // Chrome can still be flushing its profile as it exits, so cleanup is
+      // best-effort. Reported rather than swallowed: a leaked temp profile is a
+      // real (if minor) defect in the harness.
+      await rm(profileDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch((cleanupFailure) => {
+        console.warn(`[verify] Could not remove the temporary Chrome profile at ${profileDir}:`, cleanupFailure);
+      });
     },
   };
 };

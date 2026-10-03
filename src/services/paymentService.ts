@@ -1,6 +1,7 @@
 import { db } from '@/db/database';
 import type { Invoice, PaymentMethod, PaymentRecord } from '@/types';
 import { determineInvoiceStatus } from '@/utils/calculations';
+import { validatePaymentAllocation } from '@/utils/validators';
 import { newId } from '@/utils/id';
 import { writeAuditLog } from '@/services/auditService';
 
@@ -35,16 +36,20 @@ export const recordPaymentTransactional = async (
       throw new Error('Cannot record payments against a draft invoice. Finalize or send the invoice first.');
     }
 
-    if (params.paymentDate.slice(0, 10) < invoice.issueDate.slice(0, 10)) {
-      throw new Error('Payment date cannot be prior to invoice issue date.');
-    }
-
-    if (params.amountMinor <= 0) {
-      throw new Error('Payment amount must be greater than zero.');
-    }
-
-    if (params.amountMinor > invoice.balanceDueMinor) {
-      throw new Error('Payment amount cannot exceed the remaining balance due.');
+    /*
+     * DATA-02: amount bounds and the issue/payment date ordering are decided in
+     * one place, using strict `YYYY-MM-DD` parsing rather than comparing sliced
+     * characters. The settlement modal calls the same validator, so what an
+     * operator is told and what the transaction accepts cannot drift apart.
+     */
+    const allocationCheck = validatePaymentAllocation(
+      params.amountMinor,
+      invoice.balanceDueMinor,
+      invoice.issueDate,
+      params.paymentDate
+    );
+    if (!allocationCheck.valid) {
+      throw new Error(allocationCheck.message ?? 'The payment could not be applied.');
     }
 
     if (!params.transactionReference.trim()) {

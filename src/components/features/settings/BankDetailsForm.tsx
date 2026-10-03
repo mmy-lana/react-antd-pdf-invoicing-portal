@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { App, Button, Form, Input } from 'antd';
+import { useResponsiveBreakpoints } from '@/hooks/useResponsiveBreakpoints';
 
 export interface BankDetailsFormProps {
   settings: {
@@ -46,8 +47,22 @@ interface BankFields {
  */
 export const BankDetailsForm: React.FC<BankDetailsFormProps> = ({ settings, isSaving, onSubmit }) => {
   const { message } = App.useApp();
+  const { isMobile, isCoarsePointer } = useResponsiveBreakpoints();
+  const prefersTouchInput = isMobile || isCoarsePointer;
   const [bankForm] = Form.useForm<BankFields>();
   const [submitFailure, setSubmitFailure] = useState('');
+
+  /*
+   * UI-01: iOS Safari zooms the viewport when a focused field renders below
+   * 16px, and that zoom survives a form error. The constraint is applied to
+   * every control in this form explicitly rather than relying on a stylesheet
+   * cascade, so it holds even if the form is rendered inside a themed portal.
+   */
+  const fieldStyle: React.CSSProperties = prefersTouchInput
+    ? { fontSize: 16, minHeight: 'var(--touch-target-min, 44px)' }
+    : {};
+
+  const textAreaStyle: React.CSSProperties = prefersTouchInput ? { fontSize: 16 } : {};
 
   useEffect(() => {
     bankForm.setFieldsValue({
@@ -131,7 +146,7 @@ export const BankDetailsForm: React.FC<BankDetailsFormProps> = ({ settings, isSa
           label="Bank name"
           rules={[{ required: true, whitespace: true, message: 'Bank name is required.' }]}
         >
-          <Input placeholder="JPMorgan Chase Bank, N.A." inputMode="text" />
+          <Input placeholder="JPMorgan Chase Bank, N.A." inputMode="text" style={fieldStyle} />
         </Form.Item>
 
         <Form.Item
@@ -139,7 +154,7 @@ export const BankDetailsForm: React.FC<BankDetailsFormProps> = ({ settings, isSa
           label="Account name"
           rules={[{ required: true, whitespace: true, message: 'Account name is required.' }]}
         >
-          <Input placeholder="Acro Corporate Solutions Operating" inputMode="text" />
+          <Input placeholder="Acro Corporate Solutions Operating" inputMode="text" style={fieldStyle} />
         </Form.Item>
 
         <div
@@ -155,19 +170,19 @@ export const BankDetailsForm: React.FC<BankDetailsFormProps> = ({ settings, isSa
             label="Account number"
             rules={[{ required: true, whitespace: true, message: 'Account number is required.' }]}
           >
-            <Input placeholder="987654321098" inputMode="numeric" />
+            <Input placeholder="987654321098" inputMode="numeric" style={fieldStyle} />
           </Form.Item>
 
           <Form.Item name="routingNumber" label="Routing (ABA)">
-            <Input placeholder="021000021" inputMode="numeric" />
+            <Input placeholder="021000021" inputMode="numeric" style={fieldStyle} />
           </Form.Item>
 
           <Form.Item name="swiftCode" label="SWIFT / BIC">
-            <Input placeholder="CHASUS33" inputMode="text" autoCapitalize="characters" />
+            <Input placeholder="CHASUS33" inputMode="text" autoCapitalize="characters" style={fieldStyle} />
           </Form.Item>
 
           <Form.Item name="iban" label="IBAN">
-            <Input placeholder="US33CHAS021000021987654321" inputMode="text" autoCapitalize="characters" />
+            <Input placeholder="US33CHAS021000021987654321" inputMode="text" autoCapitalize="characters" style={fieldStyle} />
           </Form.Item>
         </div>
 
@@ -176,6 +191,7 @@ export const BankDetailsForm: React.FC<BankDetailsFormProps> = ({ settings, isSa
             rows={3}
             placeholder="Wire transfers only. Reference the invoice number in the remittance memo."
             inputMode="text"
+            style={textAreaStyle}
           />
         </Form.Item>
 
@@ -184,6 +200,7 @@ export const BankDetailsForm: React.FC<BankDetailsFormProps> = ({ settings, isSa
             rows={4}
             placeholder="Payment is due within the designated net terms."
             inputMode="text"
+            style={textAreaStyle}
           />
         </Form.Item>
 

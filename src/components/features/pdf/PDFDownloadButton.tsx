@@ -10,28 +10,60 @@ import { logInvoiceEvent } from '@/services/auditService';
 import { useResponsiveBreakpoints } from '@/hooks/useResponsiveBreakpoints';
 
 /**
- * Blob URLs stay alive for a grace period after the click.
+ * Registry for generated blob URLs (CODE-01).
  *
- * Revoking synchronously in the same tick can abort the transfer before the
- * browser has started reading the blob. Ten seconds comfortably covers the
- * hand-off, and anything still outstanding is released when the document goes
- * away, so a long session cannot accumulate them.
+ * Revoking in the same tick as the anchor click can abort the transfer before
+ * the browser has started reading the blob, so each URL is held for a grace
+ * period and then released. Timers are tracked alongside their URLs so a flush
+ * can cancel pending work instead of firing revocations for a document that is
+ * already gone, and a failure part-way through rendering never leaves an
+ * unregistered URL behind.
  */
 const OBJECT_URL_GRACE_MS = 10_000;
-const liveObjectUrls = new Set<string>();
 
-const releaseObjectUrl = (objectUrl: string): void => {
-  window.setTimeout(() => {
-    URL.revokeObjectURL(objectUrl);
-    liveObjectUrls.delete(objectUrl);
-  }, OBJECT_URL_GRACE_MS);
-};
+interface TrackedObjectUrl {
+  url: string;
+  timer: number;
+}
+
+class ObjectUrlRegistry {
+  private readonly tracked = new Map<string, TrackedObjectUrl>();
+
+  register(url: string): void {
+    if (this.tracked.has(url)) return;
+
+    const timer = window.setTimeout(() => {
+      this.release(url);
+    }, OBJECT_URL_GRACE_MS);
+
+    this.tracked.set(url, { url, timer });
+  }
+
+  release(url: string): void {
+    const entry = this.tracked.get(url);
+    if (!entry) return;
+
+    window.clearTimeout(entry.timer);
+    URL.revokeObjectURL(url);
+    this.tracked.delete(url);
+  }
+
+  /** Releases everything immediately; used when the document is going away. */
+  flush(): void {
+    for (const url of [...this.tracked.keys()]) {
+      this.release(url);
+    }
+  }
+
+  get size(): number {
+    return this.tracked.size;
+  }
+}
+
+const blobUrlRegistry = new ObjectUrlRegistry();
 
 if (typeof window !== 'undefined') {
-  window.addEventListener('pagehide', () => {
-    for (const objectUrl of liveObjectUrls) URL.revokeObjectURL(objectUrl);
-    liveObjectUrls.clear();
-  });
+  window.addEventListener('pagehide', () => blobUrlRegistry.flush());
 }
 
 export interface InvoicePdfExportOutcome {
@@ -48,19 +80,27 @@ export interface InvoicePdfExportOutcome {
 export const downloadInvoicePdf = async (invoice: Invoice, actor: string): Promise<InvoicePdfExportOutcome> => {
   const fileName = buildInvoiceFileName(invoice.invoiceNumber, invoice.clientSnapshot.companyName);
 
+  // If the layout pass throws, no URL has been minted yet and there is nothing
+  // to unwind; the caller clears its busy state in a finally block either way.
   const documentBlob = await pdf(<PDFDocumentTemplate invoice={invoice} />).toBlob();
+
   const objectUrl = URL.createObjectURL(documentBlob);
-  liveObjectUrls.add(objectUrl);
+  blobUrlRegistry.register(objectUrl);
 
-  const anchor = document.createElement('a');
-  anchor.href = objectUrl;
-  anchor.download = fileName;
-  anchor.rel = 'noopener';
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-
-  releaseObjectUrl(objectUrl);
+  try {
+    const anchor = document.createElement('a');
+    anchor.href = objectUrl;
+    anchor.download = fileName;
+    anchor.rel = 'noopener';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  } catch (dispatchFailure) {
+    // The URL would otherwise sit registered until its grace period expired
+    // even though nothing will ever read it.
+    blobUrlRegistry.release(objectUrl);
+    throw dispatchFailure;
+  }
 
   await logInvoiceEvent(
     invoice.id,

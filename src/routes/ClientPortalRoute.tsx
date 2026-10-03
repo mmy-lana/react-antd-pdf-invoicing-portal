@@ -78,7 +78,12 @@ export default function ClientPortalRoute(): React.ReactElement {
         'view',
         ACTOR_CLIENT_PORTAL,
         'Client opened the portal link'
-      ).catch(() => undefined);
+      ).catch((auditFailure: unknown) => {
+        // DATA-03: the view itself already succeeded, so this must not break the
+        // client experience, but the lost telemetry has to be diagnosable.
+        const cause = auditFailure instanceof Error ? auditFailure.message : String(auditFailure);
+        console.warn(`[invoicing] Could not record the portal view event for ${matchedInvoice.invoiceNumber}: ${cause}`);
+      });
     };
 
     void resolvePortalInvoice();

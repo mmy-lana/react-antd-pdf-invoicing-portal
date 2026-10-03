@@ -2,6 +2,7 @@ import React from 'react';
 import { Document, Image, Page, Text, View } from '@react-pdf/renderer';
 import type { Invoice } from '@/types';
 import { buildInvoiceFileName, pdfStyles } from '@/components/features/pdf/PDFStyles';
+import { isSafeImageDataUrl } from '@/utils/validators';
 import { formatCurrency, formatDate, formatPercent, formatQuantity } from '@/utils/formatters';
 
 export interface PDFDocumentTemplateProps {
@@ -22,7 +23,16 @@ const optionalText = (candidate: string | undefined): string | null => {
 export const PDFDocumentTemplate: React.FC<PDFDocumentTemplateProps> = ({ invoice }) => {
   const issuer = invoice.organizationSnapshot;
   const billed = invoice.clientSnapshot;
-  const logoSource = optionalText(issuer.companyLogoDataUrl);
+
+  /*
+   * SEC-01: the logo is passed to a native layout engine that throws on a
+   * truncated or mislabelled image and takes the whole document down with it. A
+   * value that is not verified base64 PNG, JPEG or WebP carrying the matching
+   * container signature is dropped, and the invoice prints without it.
+   */
+  const hasUsableLogo = isSafeImageDataUrl(issuer.companyLogoDataUrl);
+  const logoSource = hasUsableLogo ? optionalText(issuer.companyLogoDataUrl) : null;
+
   const secondStreetLine = optionalText(issuer.companyAddress.street2);
   const billedSecondStreetLine = optionalText(billed.billingAddress.street2);
   const paymentInstructions = optionalText(invoice.paymentInstructions);

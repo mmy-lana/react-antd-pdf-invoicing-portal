@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { App, Button, DatePicker, Form, Input, Select } from 'antd';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
@@ -80,11 +80,32 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitFailure, setSubmitFailure] = useState('');
 
+  /*
+   * FIN-01: a synchronous lock alongside the rendered `isSubmitting` state.
+   * React state does not commit until the next render, so two clicks landing in
+   * the same tick both observe `isSubmitting === false` and both start a write.
+   * Because the ref is mutated immediately, the second caller is rejected before
+   * it can allocate a second invoice number or send a second update.
+   */
+  const isSubmittingRef = useRef(false);
+
   const watchedCurrency = Form.useWatch<CurrencyCode>('currency', invoiceForm) ?? invoice?.currency ?? defaultCurrency;
-  const watchedItems = Form.useWatch<LineItemEditorValues[]>('items', invoiceForm) ?? invoice?.items;
+  const watchedItems = Form.useWatch<LineItemEditorValues[]>('items', invoiceForm);
+
+  /*
+   * TYPE-01: `useWatch` returns undefined before the form is mounted and can
+   * return a non-array if the field is ever reshaped. Both cases previously
+   * reached `.map` and would throw while rendering rather than showing a zero
+   * total, so the list is narrowed before it is used.
+   */
+  const watchedLineItems: readonly LineItemEditorValues[] = Array.isArray(watchedItems)
+    ? watchedItems
+    : Array.isArray(invoice?.items)
+      ? invoice.items
+      : [];
 
   const liveTotals = calculateInvoiceBreakdownMinor(
-    (watchedItems ?? []).map((typedLine, position) => toPersistedLineItem(typedLine, watchedCurrency, position)),
+    watchedLineItems.map((typedLine, position) => toPersistedLineItem(typedLine, watchedCurrency, position)),
     invoice?.amountPaidMinor ?? 0
   );
 
@@ -114,30 +135,40 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
       };
 
   const submitInvoice = async (targetStatus: 'draft' | 'pending'): Promise<void> => {
-    let enteredFields: InvoiceFormFields;
-    try {
-      enteredFields = await invoiceForm.validateFields();
-    } catch {
-      return;
-    }
+    if (isSubmittingRef.current) return;
 
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
     setSubmitFailure('');
 
     try {
+      let enteredFields: InvoiceFormFields;
+      try {
+        enteredFields = await invoiceForm.validateFields();
+      } catch {
+        return;
+      }
+
       const issueDate = enteredFields.issueDate.format('YYYY-MM-DD');
       const dueDate = enteredFields.dueDate.format('YYYY-MM-DD');
       const dateCheck = validateInvoiceDates(issueDate, dueDate);
       if (!dateCheck.valid) throw new Error(dateCheck.message);
 
-      const persistedItems = (enteredFields.items ?? []).map((typedLine, position) =>
+      // TYPE-01: the submitted list is narrowed the same way as the live preview.
+      const submittedLineItems: LineItemEditorValues[] = Array.isArray(enteredFields.items) ? enteredFields.items : [];
+
+      const persistedItems = submittedLineItems.map((typedLine, position) =>
         toPersistedLineItem(typedLine, enteredFields.currency, position)
       );
       const lineItemCheck = validateLineItems(persistedItems);
       if (!lineItemCheck.valid) throw new Error(lineItemCheck.message);
 
+      if (!enteredFields.clientId) {
+        throw new Error('Select the client being billed.');
+      }
+
       const payload = {
-        clientId: enteredFields.clientId!,
+        clientId: enteredFields.clientId,
         issueDate,
         dueDate,
         currency: enteredFields.currency,
@@ -163,6 +194,9 @@ export const InvoiceForm: React.FC<InvoiceFormProps> = ({
     } catch (saveError) {
       setSubmitFailure(saveError instanceof Error ? saveError.message : 'The invoice could not be saved.');
     } finally {
+      // The lock is released on every exit path, including validation failure,
+      // so a rejected submission cannot wedge the form.
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
   };

@@ -40,7 +40,12 @@ export default function SettingsRoute(): React.ReactElement {
       .then((highest) => {
         if (!isStale) setHighestIssued(highest);
       })
-      .catch(() => undefined);
+      .catch((lookupFailure: unknown) => {
+        // DATA-03: the hint is advisory, so a failure must not break the
+        // screen, but it should not vanish silently either.
+        const cause = lookupFailure instanceof Error ? lookupFailure.message : String(lookupFailure);
+        console.warn(`[invoicing] Could not read the highest issued sequence for "${settings.invoicePrefix}": ${cause}`);
+      });
 
     return () => {
       isStale = true;
@@ -77,6 +82,22 @@ export default function SettingsRoute(): React.ReactElement {
     [message]
   );
 
+  /**
+   * Bridges a form's void-returning handler to the rejecting persistence call.
+   * `persistPatch` already surfaces the failure to the operator as a toast; this
+   * keeps it observable in the console as well (DATA-03) without re-throwing
+   * into React's event handler.
+   */
+  const submitSection = useCallback(
+    (patch: Partial<Omit<OrganizationSettings, 'id' | 'updatedAt'>>, successMessage: string, section: string): void => {
+      void persistPatch(patch, successMessage).catch((saveFailure: unknown) => {
+        const cause = saveFailure instanceof Error ? saveFailure.message : String(saveFailure);
+        console.warn(`[invoicing] Settings save rejected for section "${section}": ${cause}`);
+      });
+    },
+    [persistPatch]
+  );
+
   if (isLoading || !settings) {
     return (
       <div style={pageStyle}>
@@ -90,17 +111,13 @@ export default function SettingsRoute(): React.ReactElement {
       <CompanyInfoForm
         settings={settings}
         isSaving={isSaving}
-        onSubmit={(patch) => {
-          void persistPatch(patch, 'Issuer profile saved.').catch(() => undefined);
-        }}
+        onSubmit={(patch) => submitSection(patch, 'Issuer profile saved.', 'issuer-profile')}
       />
 
       <BankDetailsForm
         settings={settings}
         isSaving={isSaving}
-        onSubmit={(patch) => {
-          void persistPatch(patch, 'Remittance details saved.').catch(() => undefined);
-        }}
+        onSubmit={(patch) => submitSection(patch, 'Remittance details saved.', 'remittance-details')}
       />
 
       <InvoiceSequencingForm
@@ -115,7 +132,7 @@ export default function SettingsRoute(): React.ReactElement {
               ? {}
               : { nextInvoiceSequence: patch.nextInvoiceSequence }),
           };
-          void persistPatch(sequencedPatch, 'Invoice numbering saved.').catch(() => undefined);
+          submitSection(sequencedPatch, 'Invoice numbering saved.', 'invoice-numbering');
         }}
       />
 

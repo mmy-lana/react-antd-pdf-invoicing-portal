@@ -1,8 +1,7 @@
-import React from 'react';
-import { Select } from 'antd';
-import { Link, useNavigate } from 'react-router';
-import { MenuOutlined } from '@ant-design/icons';
-import { useInvoices } from '@/hooks/useInvoices';
+import React, { useState } from 'react';
+import { Button } from 'antd';
+import { MenuOutlined, QuestionCircleOutlined } from '@ant-design/icons';
+import { HelpGuideDrawer } from '@/components/molecules/HelpGuideDrawer';
 import { useResponsiveBreakpoints } from '@/hooks/useResponsiveBreakpoints';
 import { useOrganizationSettings } from '@/hooks/useOrganizationSettings';
 
@@ -14,27 +13,22 @@ export interface CorporateHeaderProps {
 }
 
 /**
- * Top utility bar. On tablets it carries the drawer trigger; on phones it is a
- * fixed 56px strip holding the screen title and the portal switcher, which is
- * how an operator moves between "billing console" and "what the client sees"
- * without a separate sign-in.
+ * Top utility bar.
+ *
+ * On tablets it carries the drawer trigger; on phones it is a compact strip
+ * holding the screen title and the guide trigger.
+ *
+ * Security note (SEC-02): this header deliberately exposes no index of portal
+ * capability tokens. The previous global dropdown listed every issued invoice
+ * alongside the client's own company name and handed out a working client-facing
+ * URL for each one from a single control, which is an unnecessary disclosure
+ * surface. The portal is now reached deliberately from the invoice being worked
+ * on, or from the Portal entry in the mobile navigation.
  */
 export const CorporateHeader: React.FC<CorporateHeaderProps> = ({ title, subtitle, onOpenNavigation }) => {
-  const navigate = useNavigate();
   const { isTablet, isMobile } = useResponsiveBreakpoints();
   const { settings } = useOrganizationSettings();
-  const { invoices } = useInvoices();
-
-  const portalCandidates = invoices.filter(
-    (invoice) => invoice.status !== 'draft' && invoice.status !== 'cancelled'
-  );
-
-  const openPortalFor = (chosenInvoiceId: string): void => {
-    const chosenInvoice = portalCandidates.find((invoice) => invoice.id === chosenInvoiceId);
-    if (chosenInvoice) {
-      navigate(`/portal/${chosenInvoice.portalToken}`);
-    }
-  };
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
 
   return (
     <header
@@ -118,33 +112,23 @@ export const CorporateHeader: React.FC<CorporateHeaderProps> = ({ title, subtitl
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
-            maxWidth: 260,
+            maxWidth: 220,
           }}
         >
           {settings.companyName}
         </span>
       ) : null}
 
-      {portalCandidates.length > 0 ? (
-        <Select
-          showSearch
-          optionFilterProp="label"
-          aria-label="Switch to client portal"
-          placeholder="Client portal"
-          value={null}
-          onChange={openPortalFor}
-          style={{ flex: '0 1 220px', minWidth: 0, maxWidth: 220 }}
-          options={portalCandidates.slice(0, 60).map((invoice) => ({
-            value: invoice.id,
-            label: `${invoice.invoiceNumber} · ${invoice.clientSnapshot.companyName}`,
-          }))}
-          notFoundContent="No issued invoices to preview"
-        />
-      ) : (
-        <Link to="/invoices" style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
-          Client portal
-        </Link>
-      )}
+      <Button
+        icon={<QuestionCircleOutlined aria-hidden="true" />}
+        onClick={() => setIsGuideOpen(true)}
+        aria-label="Open the system guide and frequently asked questions"
+        style={{ flex: '0 0 auto', minHeight: 'var(--touch-target-min, 44px)' }}
+      >
+        {isMobile ? 'Guide' : 'Guide & Q&A'}
+      </Button>
+
+      <HelpGuideDrawer open={isGuideOpen} onClose={() => setIsGuideOpen(false)} />
     </header>
   );
 };
