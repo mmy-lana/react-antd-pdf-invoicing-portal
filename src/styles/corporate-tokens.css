@@ -1,0 +1,41 @@
+:root {
+  --color-primary: #1e3a8a;
+  --color-primary-hover: #1e40af;
+  --color-bg-layout: #f8fafc;
+  --color-bg-card: #ffffff;
+  --color-border: #e2e8f0;
+  --color-border-dark: #cbd5e1;
+  --color-text-main: #0f172a;
+  --color-text-muted: #64748b;
+  --color-status-draft: #64748b;
+  --color-status-pending: #d97706;
+  --color-status-partial: #2563eb;
+  --color-status-paid: #16a34a;
+  --color-status-overdue: #dc2626;
+  --color-status-cancelled: #475569;
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-top: env(safe-area-inset-top, 0px);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100dvh;
+  min-height: 100dvh;
+  margin: 0;
+  padding: 0;
+  background-color: var(--color-bg-layout);
+  color: var(--color-text-main);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  overflow-x: clip;
+  min-width: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
