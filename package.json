@@ -31,6 +31,7 @@
     "@vitejs/plugin-react": "latest",
     "fake-indexeddb": "latest",
     "jsdom": "latest",
+    "puppeteer-core": "^25.12.0",
     "typescript": "latest",
     "vite": "latest",
     "vitest": "latest"
