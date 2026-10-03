@@ -1,9 +1,24 @@
 import React from 'react';
-import type { Invoice } from '@/types';
+import type { CurrencyCode } from '@/types';
 import { CurrencyDisplay } from '@/components/primitives/CurrencyDisplay';
 
+/**
+ * The settled figures a summary needs. `Invoice` satisfies this structurally, so
+ * a stored invoice can be passed straight in while the editor can hand over live
+ * totals without fabricating an invoice that was never issued.
+ */
+export interface InvoiceTotalsSnapshot {
+  currency: CurrencyCode;
+  subtotalMinor: number;
+  discountTotalMinor: number;
+  taxTotalMinor: number;
+  totalAmountMinor: number;
+  amountPaidMinor: number;
+  balanceDueMinor: number;
+}
+
 export interface InvoiceSummaryCardProps {
-  invoice: Invoice;
+  totals: InvoiceTotalsSnapshot;
   /** `sticky` pins the card while the line-item list scrolls behind it on mobile. */
   variant?: 'panel' | 'sticky';
   title?: string;
@@ -17,44 +32,35 @@ interface SummaryRow {
 }
 
 /**
- * Settlement roll-up. Reads only the figures already persisted on the invoice,
- * so the totals an operator reconciles against are exactly the totals that were
- * written by the transactional service.
+ * Settlement roll-up. Amounts arrive already reconciled from the service, so
+ * the figures an operator checks are exactly the figures that were stored.
  */
 export const InvoiceSummaryCard: React.FC<InvoiceSummaryCardProps> = ({
-  invoice,
+  totals,
   variant = 'panel',
   title = 'Invoice summary',
 }) => {
-  const rows: SummaryRow[] = [
-    { caption: 'Subtotal', amountMinor: invoice.subtotalMinor },
-  ];
+  const rows: SummaryRow[] = [{ caption: 'Subtotal', amountMinor: totals.subtotalMinor }];
 
-  if (invoice.discountTotalMinor > 0) {
-    rows.push({
-      caption: 'Discount',
-      amountMinor: -invoice.discountTotalMinor,
-      emphasis: 'positive',
-    });
+  if (totals.discountTotalMinor > 0) {
+    rows.push({ caption: 'Discount', amountMinor: -totals.discountTotalMinor, emphasis: 'positive' });
   }
 
   rows.push({
     caption: 'Tax',
-    amountMinor: invoice.taxTotalMinor,
-    emphasisHint: invoice.taxTotalMinor > 0 ? 'Charged per line item' : undefined,
+    amountMinor: totals.taxTotalMinor,
+    emphasisHint: totals.taxTotalMinor > 0 ? 'Charged per line item' : undefined,
   });
 
   const settlementRows: SummaryRow[] = [
-    { caption: 'Total invoiced', amountMinor: invoice.totalAmountMinor, emphasis: 'strong' },
-    { caption: 'Amount paid', amountMinor: invoice.amountPaidMinor, emphasis: 'positive' },
+    { caption: 'Total invoiced', amountMinor: totals.totalAmountMinor, emphasis: 'strong' },
+    { caption: 'Amount paid', amountMinor: totals.amountPaidMinor, emphasis: 'positive' },
     {
       caption: 'Balance due',
-      amountMinor: invoice.balanceDueMinor,
-      emphasis: invoice.balanceDueMinor > 0 ? 'critical' : 'positive',
+      amountMinor: totals.balanceDueMinor,
+      emphasis: totals.balanceDueMinor > 0 ? 'critical' : 'positive',
       emphasisHint:
-        invoice.balanceDueMinor > 0
-          ? 'Outstanding until a payment is recorded'
-          : 'Nothing further to collect',
+        totals.balanceDueMinor > 0 ? 'Outstanding until a payment is recorded' : 'Nothing further to collect',
     },
   ];
 
@@ -85,7 +91,7 @@ export const InvoiceSummaryCard: React.FC<InvoiceSummaryCardProps> = ({
       </span>
       <CurrencyDisplay
         amountMinor={row.amountMinor}
-        currency={invoice.currency}
+        currency={totals.currency}
         tone={row.emphasis ?? 'default'}
         size={isEmphasised ? 'large' : 'inherit'}
       />
@@ -127,9 +133,9 @@ export const InvoiceSummaryCard: React.FC<InvoiceSummaryCardProps> = ({
       {rows.map((row) => renderRow(row, false))}
       {settlementRows.map((row) => renderRow(row, true))}
 
-      {invoice.currency !== 'USD' ? (
+      {totals.currency !== 'USD' ? (
         <p style={{ margin: '10px 0 0', fontSize: 11.5, color: 'var(--color-text-muted)' }}>
-          All figures are stated in {invoice.currency}. No conversion is applied.
+          All figures are stated in {totals.currency}. No conversion is applied.
         </p>
       ) : null}
     </section>
@@ -137,7 +143,7 @@ export const InvoiceSummaryCard: React.FC<InvoiceSummaryCardProps> = ({
 };
 
 /** Share of the invoice already settled, for balance-ageing annotations. */
-export const settledSharePercent = (invoice: Invoice): number => {
-  if (invoice.totalAmountMinor <= 0) return 0;
-  return Math.round((invoice.amountPaidMinor / invoice.totalAmountMinor) * 100);
+export const settledSharePercent = (totals: Pick<InvoiceTotalsSnapshot, 'amountPaidMinor' | 'totalAmountMinor'>): number => {
+  if (totals.totalAmountMinor <= 0) return 0;
+  return Math.round((totals.amountPaidMinor / totals.totalAmountMinor) * 100);
 };

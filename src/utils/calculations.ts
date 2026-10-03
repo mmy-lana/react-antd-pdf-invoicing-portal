@@ -1,4 +1,11 @@
-import type { CalculationBreakdownMinor, CurrencyCode, InvoiceItem, InvoiceStatus, ItemTotalsMinor } from '@/types';
+import type {
+  CalculationBreakdownMinor,
+  CurrencyCode,
+  CurrencyTotals,
+  InvoiceItem,
+  InvoiceStatus,
+  ItemTotalsMinor,
+} from '@/types';
 import { CURRENCY_DECIMALS } from '@/types';
 
 /**
@@ -134,4 +141,28 @@ export const daysPastDue = (dueDateISO: string, referenceDateISO: string = today
 export const percentOfMinorTotal = (partMinor: number, wholeMinor: number): number => {
   if (wholeMinor === 0) return 0;
   return Math.round((partMinor / wholeMinor) * 1000) / 10;
+};
+
+/**
+ * Totals bucketed by currency code.
+ *
+ * Money in two currencies is two numbers, never one number. Aggregating without
+ * this would silently add euros to dollars and produce a figure that means
+ * nothing, so every roll-up on screen is built from this shape.
+ */
+export const accumulateByCurrency = (
+  entries: ReadonlyArray<{ currency: CurrencyCode; amountMinor: number }>
+): CurrencyTotals => {
+  return entries.reduce<CurrencyTotals>((runningTotals, entry) => {
+    runningTotals[entry.currency] = (runningTotals[entry.currency] ?? 0) + entry.amountMinor;
+    return runningTotals;
+  }, {});
+};
+
+/** Stable display order for currency buckets, so tiles never reshuffle on re-render. */
+export const toCurrencyFigureList = (totals: CurrencyTotals): Array<{ currency: CurrencyCode; amountMinor: number }> => {
+  return (Object.entries(totals) as Array<[CurrencyCode, number]>)
+    .filter(([, amountMinor]) => Number.isFinite(amountMinor) && amountMinor !== 0)
+    .sort(([earlierCurrency], [laterCurrency]) => earlierCurrency.localeCompare(laterCurrency))
+    .map(([currency, amountMinor]) => ({ currency, amountMinor }));
 };

@@ -126,16 +126,24 @@ body,
   border: 0;
 }
 
-/* Applied on coarse pointers so every control clears the minimum tap target. */
-@media (pointer: coarse) {
+/*
+ * Touch ergonomics.
+ *
+ * The mobile tier is width-driven (see useResponsiveBreakpoints), so a narrow
+ * viewport is treated as touch even when the pointer media query cannot be
+ * trusted. An actual coarse pointer counts on every screen size.
+ */
+@media (max-width: 767px), (pointer: coarse) {
   .ant-btn,
   .ant-select-selector,
   .ant-picker,
+  .ant-input-affix-wrapper,
   .ant-input,
   .ant-input-number,
   .ant-checkbox-wrapper,
   .ant-radio-wrapper,
-  .ant-segmented-item {
+  .ant-segmented-item,
+  .ant-segmented-thumb {
     min-height: var(--touch-target-min);
   }
 
@@ -145,6 +153,16 @@ body,
   .ant-select-selection-item,
   .ant-select-selection-placeholder {
     font-size: var(--input-font-size-touch);
+  }
+
+  /*
+   * Stepper arrows split the control in half, leaving each around 21px — well
+   * under the minimum and fiddly on a phone. A narrow layout already opens the
+   * numeric keypad on focus, so the steppers are dropped rather than shipped
+   * below target size.
+   */
+  .ant-input-number-action {
+    display: none;
   }
 }
 
