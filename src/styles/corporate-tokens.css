@@ -1,26 +1,84 @@
+/*
+ * Corporate design tokens and mobile-safe primitives.
+ *
+ * The palette is a slate/navy enterprise scale. Every status colour paired with
+ * white text below clears 4.5:1 contrast, so status badges stay legible on a
+ * phone screen in daylight.
+ */
+
 :root {
+  /* Brand */
   --color-primary: #1e3a8a;
-  --color-primary-hover: #1e40af;
-  --color-bg-layout: #f8fafc;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-active: #1e40af;
+  --color-primary-subtle: #eef2ff;
+  --color-primary-border: #c7d2fe;
+
+  /* Surfaces */
+  --color-bg-layout: #f1f5f9;
   --color-bg-card: #ffffff;
+  --color-bg-sunken: #f8fafc;
+  --color-bg-header: #0f172a;
   --color-border: #e2e8f0;
-  --color-border-dark: #cbd5e1;
+  --color-border-strong: #cbd5e1;
+
+  /* Text */
   --color-text-main: #0f172a;
+  --color-text-secondary: #334155;
   --color-text-muted: #64748b;
-  --color-status-draft: #64748b;
-  --color-status-pending: #d97706;
-  --color-status-partial: #2563eb;
-  --color-status-paid: #16a34a;
-  --color-status-overdue: #dc2626;
-  --color-status-cancelled: #475569;
-  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --color-text-inverse: #f8fafc;
+
+  /* Status: each solid pairing with white text clears 4.5:1 */
+  --color-status-draft: #475569;
+  --color-status-pending: #b45309;
+  --color-status-partial: #1d4ed8;
+  --color-status-paid: #15803d;
+  --color-status-overdue: #b91c1c;
+  --color-status-cancelled: #334155;
+  --color-status-draft-wash: #f1f5f9;
+  --color-status-pending-wash: #fef3c7;
+  --color-status-partial-wash: #dbeafe;
+  --color-status-paid-wash: #dcfce7;
+  --color-status-overdue-wash: #fee2e2;
+  --color-status-cancelled-wash: #e2e8f0;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.06), 0 1px 3px rgba(15, 23, 42, 0.04);
+  --shadow-overlay: 0 12px 32px rgba(15, 23, 42, 0.16);
+
+  --layout-sidebar-width: 240px;
+  --layout-header-height: 56px;
+  --layout-bottom-nav-height: 60px;
+
+  /* WCAG 2.5.5 comfortable tap target */
+  --touch-target-min: 44px;
+  /* 16px stops iOS Safari zooming the viewport when an input takes focus */
+  --input-font-size-touch: 16px;
+
   --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
+
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 }
 
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
-  margin: 0;
-  padding: 0;
 }
 
 html,
@@ -33,9 +91,76 @@ body,
   padding: 0;
   background-color: var(--color-bg-layout);
   color: var(--color-text-main);
-  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  overflow-x: clip;
-  min-width: 0;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Clip rather than scroll: sticky headers stay put and no screen pans sideways. */
+body,
+#root {
+  overflow-x: clip;
+  min-width: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-primary-hover);
+  outline-offset: 2px;
+}
+
+.tabular-figures {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Applied on coarse pointers so every control clears the minimum tap target. */
+@media (pointer: coarse) {
+  .ant-btn,
+  .ant-select-selector,
+  .ant-picker,
+  .ant-input,
+  .ant-input-number,
+  .ant-checkbox-wrapper,
+  .ant-radio-wrapper,
+  .ant-segmented-item {
+    min-height: var(--touch-target-min);
+  }
+
+  .ant-input,
+  .ant-input-number,
+  .ant-picker-input > input,
+  .ant-select-selection-item,
+  .ant-select-selection-placeholder {
+    font-size: var(--input-font-size-touch);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
 }
